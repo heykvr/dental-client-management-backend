@@ -4,7 +4,6 @@ from typing import Any
 
 from app.core.exceptions import PatientNotFoundError
 from app.repositories.case_sheet_repo import CaseSheetRepository
-from app.repositories.patient_repo import PatientRepository
 from app.schemas.case_sheet import (
     CaseSheetContent,
     CaseSheetInput,
@@ -29,28 +28,20 @@ def summary_source_hash(patient: dict[str, Any], content: CaseSheetContent) -> s
 
 
 class CaseSheetService:
-    def __init__(self, case_sheets: CaseSheetRepository, patients: PatientRepository):
+    def __init__(self, case_sheets: CaseSheetRepository):
         self._case_sheets = case_sheets
-        self._patients = patients
 
     async def get_case_sheet(self, patient_id: str) -> CaseSheetResponse:
-        patient_id = normalize_patient_id(patient_id)
-        patient = await self._require_patient(patient_id)
-        doc = await self._case_sheets.get(patient_id)
-        if doc is None:
-            # Safety net: every patient should already have one (created with the patient)
-            await self._case_sheets.create_empty(patient_id)
-            doc = await self._case_sheets.get(patient_id)
-        return self._to_response(doc, patient)
+        doc = await self._load(normalize_patient_id(patient_id))
+        return self._to_response(doc)
 
     async def save_case_sheet(self, patient_id: str, data: CaseSheetInput) -> CaseSheetResponse:
         patient_id = normalize_patient_id(patient_id)
-        patient = await self._require_patient(patient_id)
-        current = await self._case_sheets.get(patient_id) or {}
+        doc = await self._load(patient_id)
 
         # Sections that were sent replace the stored ones; the rest stay as they are.
         # A section sent as null is cleared.
-        merged = CaseSheetContent.model_validate(current)
+        merged = CaseSheetContent.model_validate(doc["case_sheet"])
         sent = {}
         for section in data.model_fields_set:
             value = getattr(data, section) or type(getattr(merged, section))()
@@ -58,20 +49,32 @@ class CaseSheetService:
             sent[section] = value.model_dump()
 
         doc = await self._case_sheets.save(patient_id, sent, compute_status(merged))
-        return self._to_response(doc, patient)
-
-    async def _require_patient(self, patient_id: str) -> dict[str, Any]:
-        patient = await self._patients.get(patient_id)
-        if patient is None:
+        if doc is None:  # patient deleted in between
             raise PatientNotFoundError()
-        return patient
+        return self._to_response(doc)
+
+    async def _load(self, patient_id: str) -> dict[str, Any]:
+        """Patient + embedded case sheet in one query; 404 if the patient doesn't exist."""
+        doc = await self._case_sheets.get_patient_with_case_sheet(patient_id)
+        if doc is None:
+            raise PatientNotFoundError()
+        if "case_sheet" not in doc:
+            # Safety net: every patient is created with one
+            await self._case_sheets.create_empty(patient_id)
+            doc = await self._case_sheets.get_patient_with_case_sheet(patient_id)
+        return doc
 
     @staticmethod
-    def _to_response(doc: dict[str, Any], patient: dict[str, Any]) -> CaseSheetResponse:
-        summary = doc.get("ai_summary") or {}
+    def _to_response(doc: dict[str, Any]) -> CaseSheetResponse:
+        sheet = doc["case_sheet"]
+        summary = sheet.get("ai_summary") or {}
         saved_hash = summary.get("source_hash")
-        current_hash = summary_source_hash(patient, CaseSheetContent.model_validate(doc))
+        current_hash = summary_source_hash(doc, CaseSheetContent.model_validate(sheet))
         is_stale = saved_hash is not None and saved_hash != current_hash
         return CaseSheetResponse.model_validate(
-            {**doc, "ai_summary": {**summary, "is_stale": is_stale}}
+            {
+                **sheet,
+                "patient_id": doc["patient_id"],
+                "ai_summary": {**summary, "is_stale": is_stale},
+            }
         )

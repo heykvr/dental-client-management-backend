@@ -12,11 +12,11 @@ from app.services.patient_service import PatientService
 
 
 def get_patient_service(db: DbDep) -> PatientService:
-    return PatientService(PatientRepository(db), CounterRepository(db), CaseSheetRepository(db))
+    return PatientService(PatientRepository(db), CounterRepository(db))
 
 
 def get_case_sheet_service(db: DbDep) -> CaseSheetService:
-    return CaseSheetService(CaseSheetRepository(db), PatientRepository(db))
+    return CaseSheetService(CaseSheetRepository(db))
 
 
 def get_dashboard_service(db: DbDep) -> DashboardService:

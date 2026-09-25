@@ -45,7 +45,10 @@ class DashboardService:
             total_patients=total,
             new_patients_this_month=await self._patients.count(self._to_utc(month_start)),
             completed_case_sheets=statuses.get("completed", 0),
-            pending_case_sheets=statuses.get("pending", 0) + statuses.get("not_started", 0),
+            # A patient without a case sheet (shouldn't happen) counts as not started
+            pending_case_sheets=statuses.get("pending", 0)
+            + statuses.get("not_started", 0)
+            + statuses.get(None, 0),
             registration_trend=await self.get_trend(),
             recent_patients=[PatientResponse.model_validate(doc) for doc in recent],
         )

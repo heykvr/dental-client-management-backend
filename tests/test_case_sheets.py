@@ -101,9 +101,14 @@ def test_summary_is_stale_when_content_changes_after_summary(client, patient):
     client.put(URL, json={"chief_complaint": CHIEF_COMPLAINT})
     with MongoClient(TEST_MONGODB_URI) as mongo:
         # Simulate a summary made from older content (Day 4 builds the real one)
-        mongo[TEST_DB_NAME]["case_sheets"].update_one(
+        mongo[TEST_DB_NAME]["patients"].update_one(
             {"patient_id": "PAT-0001"},
-            {"$set": {"ai_summary.text": "Old summary", "ai_summary.source_hash": "old"}},
+            {
+                "$set": {
+                    "case_sheet.ai_summary.text": "Old summary",
+                    "case_sheet.ai_summary.source_hash": "old",
+                }
+            },
         )
 
     assert client.get(URL).json()["ai_summary"]["is_stale"] is True

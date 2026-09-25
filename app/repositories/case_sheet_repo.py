@@ -1,3 +1,11 @@
+"""Case sheets are EMBEDDED in the patient document (`patients.case_sheet`).
+
+Why embedded: strictly one case sheet per patient, always read together with the patient,
+and small/bounded. So one query loads the whole screen and creating a patient with its
+empty case sheet is a single atomic write. See DECISIONS.md.
+"""
+
+from datetime import datetime
 from typing import Any
 
 from pymongo import ASCENDING, IndexModel, ReturnDocument
@@ -17,56 +25,58 @@ EMPTY_SUMMARY = {
 }
 
 
-class CaseSheetRepository:
-    """One case sheet per patient, linked by patient_id (enforced by a unique index)."""
+def empty_case_sheet(now: datetime) -> dict[str, Any]:
+    """A new, empty case sheet (status not_started), embedded when a patient is created."""
+    return {
+        **CaseSheetContent().model_dump(),
+        "status": "not_started",
+        "ai_summary": EMPTY_SUMMARY,
+        "created_at": now,
+        "updated_at": now,
+    }
 
+
+class CaseSheetRepository:
     def __init__(self, db: AsyncDatabase):
-        self._collection = db["case_sheets"]
+        self._collection = db["patients"]
 
     async def ensure_indexes(self) -> None:
-        await self._collection.create_indexes(
-            [
-                IndexModel([("patient_id", ASCENDING)], unique=True),
-                IndexModel([("status", ASCENDING)]),
-            ]
-        )
+        # For dashboard status counts
+        await self._collection.create_indexes([IndexModel([("case_sheet.status", ASCENDING)])])
 
-    async def create_empty(self, patient_id: str) -> None:
-        # $setOnInsert + upsert: creates the sheet once, never overwrites an existing one
-        now = utc_now()
-        await self._collection.update_one(
-            {"patient_id": patient_id},
-            {
-                "$setOnInsert": {
-                    **CaseSheetContent().model_dump(),
-                    "status": "not_started",
-                    "ai_summary": EMPTY_SUMMARY,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-            },
-            upsert=True,
-        )
-
-    async def get(self, patient_id: str) -> dict[str, Any] | None:
+    async def get_patient_with_case_sheet(self, patient_id: str) -> dict[str, Any] | None:
+        """The whole patient document, including `case_sheet`, in one query."""
         return await self._collection.find_one({"patient_id": patient_id}, NO_ID)
 
-    async def save(self, patient_id: str, sections: dict[str, Any], status: str) -> dict[str, Any]:
-        """Replace the given sections and set the status. Creates the sheet if it is missing."""
-        now = utc_now()
+    async def create_empty(self, patient_id: str) -> None:
+        """Safety net for a patient without a case sheet. Never overwrites an existing one
+        and never creates a patient."""
+        await self._collection.update_one(
+            {"patient_id": patient_id, "case_sheet": {"$exists": False}},
+            {"$set": {"case_sheet": empty_case_sheet(utc_now())}},
+        )
+
+    async def save(
+        self, patient_id: str, sections: dict[str, Any], status: str
+    ) -> dict[str, Any] | None:
+        """Replace the given sections and set the status. Only `case_sheet.*` sub-fields are
+        written, so patient details are never touched. Returns the whole patient document."""
+        updates = {f"case_sheet.{name}": value for name, value in sections.items()}
         return await self._collection.find_one_and_update(
             {"patient_id": patient_id},
             {
-                "$set": {**sections, "status": status, "updated_at": now},
-                "$setOnInsert": {"ai_summary": EMPTY_SUMMARY, "created_at": now},
+                "$set": {
+                    **updates,
+                    "case_sheet.status": status,
+                    "case_sheet.updated_at": utc_now(),
+                }
             },
-            upsert=True,
             projection=NO_ID,
             return_document=ReturnDocument.AFTER,
         )
 
-    async def count_by_status(self) -> dict[str, int]:
+    async def count_by_status(self) -> dict[str | None, int]:
         cursor = await self._collection.aggregate(
-            [{"$group": {"_id": "$status", "count": {"$sum": 1}}}]
+            [{"$group": {"_id": "$case_sheet.status", "count": {"$sum": 1}}}]
         )
         return {row["_id"]: row["count"] async for row in cursor}

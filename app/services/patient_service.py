@@ -1,5 +1,4 @@
 from app.core.exceptions import PatientNotFoundError
-from app.repositories.case_sheet_repo import CaseSheetRepository
 from app.repositories.counter_repo import CounterRepository
 from app.repositories.patient_repo import PatientRepository
 from app.schemas.common import Page
@@ -12,21 +11,14 @@ def normalize_patient_id(patient_id: str) -> str:
 
 
 class PatientService:
-    def __init__(
-        self,
-        patients: PatientRepository,
-        counters: CounterRepository,
-        case_sheets: CaseSheetRepository,
-    ):
+    def __init__(self, patients: PatientRepository, counters: CounterRepository):
         self._patients = patients
         self._counters = counters
-        self._case_sheets = case_sheets
 
     async def create_patient(self, data: PatientCreate) -> PatientResponse:
         patient_id = await self._counters.next_patient_id()
+        # The patient is created together with an empty, not_started case sheet (embedded)
         doc = await self._patients.create(patient_id, data.model_dump())
-        # Every patient starts with an empty, not_started case sheet (1:1)
-        await self._case_sheets.create_empty(patient_id)
         return PatientResponse.model_validate(doc)
 
     async def get_patient(self, patient_id: str) -> PatientResponse:

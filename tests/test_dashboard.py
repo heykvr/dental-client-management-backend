@@ -28,9 +28,9 @@ async def add_patient(db, n: int, created_at: datetime, status: str = "not_start
             "address": "Somewhere in India",
             "created_at": created_at,
             "updated_at": created_at,
+            "case_sheet": {"status": status},
         }
     )
-    await db["case_sheets"].insert_one({"patient_id": patient_id, "status": status})
 
 
 @pytest.fixture

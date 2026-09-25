@@ -6,9 +6,11 @@ from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.time import utc_now
+from app.repositories.case_sheet_repo import empty_case_sheet
 
-# Never return Mongo's internal _id to callers
-NO_ID = {"_id": 0}
+# Never return Mongo's internal _id; patient reads leave out the embedded case sheet
+# (it has its own endpoint), which keeps the patient list light
+PATIENT_ONLY = {"_id": 0, "case_sheet": 0}
 
 
 def _to_db(fields: dict[str, Any]) -> dict[str, Any]:
@@ -46,21 +48,21 @@ class PatientRepository:
         )
 
     async def create(self, patient_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        # One insert = patient + its empty case sheet, atomically (1:1, embedded)
         now = utc_now()
         doc = {"patient_id": patient_id, **_to_db(fields), "created_at": now, "updated_at": now}
-        await self._collection.insert_one(doc)
-        doc.pop("_id", None)
+        await self._collection.insert_one({**doc, "case_sheet": empty_case_sheet(now)})
         return doc
 
     async def get(self, patient_id: str) -> dict[str, Any] | None:
-        return await self._collection.find_one({"patient_id": patient_id}, NO_ID)
+        return await self._collection.find_one({"patient_id": patient_id}, PATIENT_ONLY)
 
     async def list(
         self, search: str | None, skip: int, limit: int
     ) -> tuple[list[dict[str, Any]], int]:
         query = _search_filter(search)
         cursor = (
-            self._collection.find(query, NO_ID)
+            self._collection.find(query, PATIENT_ONLY)
             .sort([("created_at", DESCENDING), ("patient_id", DESCENDING)])
             .skip(skip)
             .limit(limit)
@@ -73,7 +75,7 @@ class PatientRepository:
         return await self._collection.find_one_and_update(
             {"patient_id": patient_id},
             {"$set": {**_to_db(changes), "updated_at": utc_now()}},
-            projection=NO_ID,
+            projection=PATIENT_ONLY,
             return_document=ReturnDocument.AFTER,
         )
 

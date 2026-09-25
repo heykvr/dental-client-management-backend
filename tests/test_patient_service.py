@@ -1,7 +1,6 @@
 import pytest
 
 from app.core.exceptions import PatientNotFoundError
-from app.repositories.case_sheet_repo import CaseSheetRepository
 from app.repositories.counter_repo import CounterRepository
 from app.repositories.patient_repo import PatientRepository
 from app.schemas.patient import PatientCreate, PatientUpdate
@@ -23,7 +22,7 @@ async def service(db):
     counters = CounterRepository(db)
     await patients.ensure_indexes()
     await counters.ensure_patient_counter()
-    return PatientService(patients, counters, CaseSheetRepository(db))
+    return PatientService(patients, counters)
 
 
 async def test_create_assigns_sequential_ids(service):
@@ -74,9 +73,9 @@ async def test_update_missing_patient_raises_not_found(service):
         await service.update_patient("PAT-9999", PatientUpdate(address="45 Park Street"))
 
 
-async def test_create_also_creates_empty_case_sheet(service, db):
+async def test_create_embeds_empty_case_sheet(service, db):
     await service.create_patient(NEW_PATIENT)
 
-    sheet = await CaseSheetRepository(db).get("PAT-0001")
+    doc = await db["patients"].find_one({"patient_id": "PAT-0001"})
 
-    assert sheet["status"] == "not_started"
+    assert doc["case_sheet"]["status"] == "not_started"
