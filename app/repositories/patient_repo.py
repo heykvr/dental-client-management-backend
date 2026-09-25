@@ -1,18 +1,14 @@
 import re
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from typing import Any
 
 from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
 from pymongo.asynchronous.database import AsyncDatabase
 
+from app.core.time import utc_now
+
 # Never return Mongo's internal _id to callers
 NO_ID = {"_id": 0}
-
-
-def _now() -> datetime:
-    # MongoDB stores milliseconds; truncate so returned values match what is saved
-    now = datetime.now(UTC)
-    return now.replace(microsecond=now.microsecond // 1000 * 1000)
 
 
 def _to_db(fields: dict[str, Any]) -> dict[str, Any]:
@@ -50,7 +46,7 @@ class PatientRepository:
         )
 
     async def create(self, patient_id: str, fields: dict[str, Any]) -> dict[str, Any]:
-        now = _now()
+        now = utc_now()
         doc = {"patient_id": patient_id, **_to_db(fields), "created_at": now, "updated_at": now}
         await self._collection.insert_one(doc)
         doc.pop("_id", None)
@@ -76,7 +72,34 @@ class PatientRepository:
     async def update(self, patient_id: str, changes: dict[str, Any]) -> dict[str, Any] | None:
         return await self._collection.find_one_and_update(
             {"patient_id": patient_id},
-            {"$set": {**_to_db(changes), "updated_at": _now()}},
+            {"$set": {**_to_db(changes), "updated_at": utc_now()}},
             projection=NO_ID,
             return_document=ReturnDocument.AFTER,
         )
+
+    async def count(self, created_since: datetime | None = None) -> int:
+        query = {"created_at": {"$gte": created_since}} if created_since else {}
+        return await self._collection.count_documents(query)
+
+    async def registrations_by_period(
+        self, start: datetime, end: datetime, date_format: str, timezone: str
+    ) -> dict[str, int]:
+        """Count patients created in [start, end), grouped by period label in the given timezone,
+        e.g. {"2026-09": 7} for date_format "%Y-%m"."""
+        pipeline = [
+            {"$match": {"created_at": {"$gte": start, "$lt": end}}},
+            {
+                "$group": {
+                    "_id": {
+                        "$dateToString": {
+                            "format": date_format,
+                            "date": "$created_at",
+                            "timezone": timezone,
+                        }
+                    },
+                    "count": {"$sum": 1},
+                }
+            },
+        ]
+        cursor = await self._collection.aggregate(pipeline)
+        return {row["_id"]: row["count"] async for row in cursor}

@@ -24,6 +24,14 @@ class AppError(Exception):
         super().__init__(self.detail)
 
 
+class InvalidRequestError(AppError):
+    """Request is well-formed but its values don't make sense together."""
+
+    status_code = 422
+    code = "VALIDATION_ERROR"
+    default_detail = "Invalid request data."
+
+
 class PatientNotFoundError(AppError):
     status_code = 404
     code = "PATIENT_NOT_FOUND"
@@ -34,6 +42,12 @@ class CaseSheetRequiredError(AppError):
     status_code = 409
     code = "CASE_SHEET_REQUIRED"
     default_detail = "Save a case sheet before generating a summary."
+
+
+class RateLimitedError(AppError):
+    status_code = 429
+    code = "RATE_LIMITED"
+    default_detail = "Too many requests. Please try again shortly."
 
 
 class AIUnavailableError(AppError):

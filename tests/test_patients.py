@@ -25,7 +25,7 @@ def test_create_returns_201_with_id_and_computed_fields(client):
     assert body["full_name"] == "Aarav Ramesh"
     assert body["phone"] == "+919876543210"
     assert isinstance(body["age"], int)
-    assert body["created_at"].endswith("Z")
+    assert body["created_at"].endswith("+05:30")  # returned in IST
     assert "_id" not in body
 
 

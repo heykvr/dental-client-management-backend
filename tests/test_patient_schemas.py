@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
+from app.core.time import local_today
 from app.schemas.patient import PatientCreate, PatientResponse, PatientUpdate, calculate_age
 
 VALID = {
@@ -40,7 +41,7 @@ def test_create_allows_missing_last_name(last_name):
         ("phone", "98765abcde"),
         ("address", "abc"),
         ("date_of_birth", "not-a-date"),
-        ("date_of_birth", (datetime.now(UTC).date() + timedelta(days=1)).isoformat()),
+        ("date_of_birth", (local_today() + timedelta(days=1)).isoformat()),
         ("date_of_birth", "1890-01-01"),
     ],
 )
@@ -104,3 +105,8 @@ def test_full_name_without_last_name():
 )
 def test_calculate_age_handles_birthday_boundary(today, expected):
     assert calculate_age(date(2002, 5, 14), today) == expected
+
+
+def test_dob_today_in_ist_is_accepted():
+    # Just after midnight IST, UTC is still "yesterday"; a baby born today must be valid
+    assert PatientCreate(**{**VALID, "date_of_birth": local_today().isoformat()})

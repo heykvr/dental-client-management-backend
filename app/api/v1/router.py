@@ -1,6 +1,10 @@
 from fastapi import APIRouter
 
-from app.api.v1 import patients
+from app.api.v1 import case_sheets, dashboard, patients
+from app.core.rate_limit import default_rate_limit
 
-api_router = APIRouter(prefix="/api/v1")
+# The default rate limit applies to every /api/v1 endpoint
+api_router = APIRouter(prefix="/api/v1", dependencies=[default_rate_limit])
 api_router.include_router(patients.router)
+api_router.include_router(case_sheets.router)
+api_router.include_router(dashboard.router)

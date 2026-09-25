@@ -1,16 +1,18 @@
 import re
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Annotated, Literal
 
 from pydantic import (
     AfterValidator,
     BaseModel,
-    BeforeValidator,
     ConfigDict,
     StringConstraints,
     computed_field,
     model_validator,
 )
+
+from app.core.time import LocalDatetime, local_today
+from app.schemas.common import optional_text
 
 MAX_AGE_YEARS = 120
 PHONE_PATTERN = re.compile(r"^\+?\d{10,15}$")
@@ -19,13 +21,13 @@ Gender = Literal["male", "female", "other"]
 
 
 def calculate_age(date_of_birth: date, today: date | None = None) -> int:
-    today = today or datetime.now(UTC).date()
+    today = today or local_today()
     had_birthday = (today.month, today.day) >= (date_of_birth.month, date_of_birth.day)
     return today.year - date_of_birth.year - (0 if had_birthday else 1)
 
 
 def _validate_date_of_birth(value: date) -> date:
-    if value > datetime.now(UTC).date():
+    if value > local_today():
         raise ValueError("Date of birth cannot be in the future")
     if calculate_age(value) > MAX_AGE_YEARS:
         raise ValueError(f"Age cannot be more than {MAX_AGE_YEARS} years")
@@ -40,22 +42,15 @@ def _normalize_phone(value: str) -> str:
     return cleaned
 
 
-def _blank_to_none(value: object) -> object:
-    return None if isinstance(value, str) and not value.strip() else value
-
-
 FirstName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
-LastName = Annotated[
-    Annotated[str, StringConstraints(strip_whitespace=True, max_length=50)] | None,
-    BeforeValidator(_blank_to_none),
-]
+LastName = optional_text(50)
 DateOfBirth = Annotated[date, AfterValidator(_validate_date_of_birth)]
 Phone = Annotated[str, StringConstraints(strip_whitespace=True), AfterValidator(_normalize_phone)]
 Address = Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=300)]
 
 
 class PatientCreate(BaseModel):
-    """Body of POST /patients and POST /public/register."""
+    """Body of POST /patients."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -104,8 +99,8 @@ class PatientResponse(BaseModel):
     gender: Gender
     phone: str
     address: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: LocalDatetime
+    updated_at: LocalDatetime
 
     @computed_field
     @property

@@ -17,6 +17,14 @@ os.environ["MONGODB_URI"] = TEST_MONGODB_URI
 os.environ["MONGODB_DB_NAME"] = TEST_DB_NAME
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """Each test starts with fresh rate-limit counters."""
+    from app.core.rate_limit import reset_rate_limits
+
+    reset_rate_limits()
+
+
 @pytest.fixture
 def client():
     """HTTP client for the real app, on a clean test database."""
