@@ -5,9 +5,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.database import DbDep, create_client, ping
+from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
+from app.repositories.counter_repo import CounterRepository
+from app.repositories.patient_repo import PatientRepository
 
 
 @asynccontextmanager
@@ -15,6 +19,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     client = create_client(settings)
     app.state.db = client[settings.mongodb_db_name]
+    await CounterRepository(app.state.db).ensure_patient_counter()
+    await PatientRepository(app.state.db).ensure_indexes()
     yield
     await client.close()
 
@@ -24,6 +30,7 @@ def create_app() -> FastAPI:
     setup_logging(settings.environment)
 
     app = FastAPI(title="Dental Patient Management API", version="0.1.0", lifespan=lifespan)
+    register_exception_handlers(app)
 
     app.add_middleware(
         CORSMiddleware,
@@ -31,6 +38,8 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT"],
         allow_headers=["Content-Type"],
     )
+
+    app.include_router(api_router)
 
     @app.get("/health", tags=["health"])
     async def health(db: DbDep) -> JSONResponse:
