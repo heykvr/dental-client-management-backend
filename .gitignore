@@ -19,3 +19,6 @@ build/
 .vscode/
 .idea/
 .DS_Store
+
+# AI evals: local only (synthetic dataset, runner, results). See DECISIONS.md
+evals/
