@@ -1,3 +1,4 @@
+import asyncio
 import calendar
 from collections.abc import Callable
 from datetime import UTC, date, datetime, time, timedelta
@@ -39,17 +40,23 @@ class DashboardService:
 
     async def get_stats(self) -> DashboardStats:
         month_start = self._local_today().replace(day=1)
-        statuses = await self._case_sheets.count_by_status()
-        recent, total = await self._patients.list(None, skip=0, limit=RECENT_PATIENTS)
+        # Independent queries run at the same time: the page waits for the slowest one,
+        # not for the sum of all of them
+        statuses, (recent, total), new_this_month, trend = await asyncio.gather(
+            self._case_sheets.count_by_status(),
+            self._patients.list(None, skip=0, limit=RECENT_PATIENTS),
+            self._patients.count(self._to_utc(month_start)),
+            self.get_trend(),
+        )
         return DashboardStats(
             total_patients=total,
-            new_patients_this_month=await self._patients.count(self._to_utc(month_start)),
+            new_patients_this_month=new_this_month,
             completed_case_sheets=statuses.get("completed", 0),
             # A patient without a case sheet (shouldn't happen) counts as not started
             pending_case_sheets=statuses.get("pending", 0)
             + statuses.get("not_started", 0)
             + statuses.get(None, 0),
-            registration_trend=await self.get_trend(),
+            registration_trend=trend,
             recent_patients=[PatientResponse.model_validate(doc) for doc in recent],
         )
 

@@ -1,3 +1,4 @@
+import asyncio
 import re
 from datetime import date, datetime
 from typing import Any
@@ -67,8 +68,10 @@ class PatientRepository:
             .skip(skip)
             .limit(limit)
         )
-        items = await cursor.to_list()
-        total = await self._collection.count_documents(query)
+        # The page and the total are fetched at the same time
+        items, total = await asyncio.gather(
+            cursor.to_list(), self._collection.count_documents(query)
+        )
         return items, total
 
     async def update(self, patient_id: str, changes: dict[str, Any]) -> dict[str, Any] | None:
