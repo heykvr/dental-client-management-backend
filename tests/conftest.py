@@ -15,6 +15,7 @@ if "mongodb.net" in TEST_MONGODB_URI or TEST_MONGODB_URI.startswith("mongodb+srv
 # Set before any app module is imported by the test files.
 os.environ["MONGODB_URI"] = TEST_MONGODB_URI
 os.environ["MONGODB_DB_NAME"] = TEST_DB_NAME
+os.environ["GEMINI_API_KEY"] = "test-key-never-used"
 
 
 @pytest.fixture(autouse=True)
@@ -25,18 +26,44 @@ def _reset_rate_limits():
     reset_rate_limits()
 
 
+class FakeAI:
+    """Stands in for the Gemini client in tests: no network, no API key, no quota used."""
+
+    model = "fake-gemini"
+
+    def __init__(self):
+        self.text = "Fake summary of the patient's record."
+        self.error: Exception | None = None
+        self.calls: list[dict] = []
+
+    async def generate(self, *, system, contents, max_output_tokens=400):
+        self.calls.append({"system": system, "contents": contents})
+        if self.error:
+            raise self.error
+        return self.text
+
+
 @pytest.fixture
-def client():
-    """HTTP client for the real app, on a clean test database."""
+def fake_ai():
+    return FakeAI()
+
+
+@pytest.fixture
+def client(fake_ai):
+    """HTTP client for the real app, on a clean test database, with the AI faked out.
+    Tests never call the real Gemini API (it costs quota and would make tests flaky)."""
     from fastapi.testclient import TestClient
 
     from app.main import app
+    from app.services.ai_service import get_ai_client
 
+    app.dependency_overrides[get_ai_client] = lambda: fake_ai
     with MongoClient(TEST_MONGODB_URI, serverSelectionTimeoutMS=3000) as mongo:
         mongo.drop_database(TEST_DB_NAME)
         with TestClient(app) as test_client:
             yield test_client
         mongo.drop_database(TEST_DB_NAME)
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture

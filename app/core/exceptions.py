@@ -41,7 +41,7 @@ class PatientNotFoundError(AppError):
 class CaseSheetRequiredError(AppError):
     status_code = 409
     code = "CASE_SHEET_REQUIRED"
-    default_detail = "Save a case sheet before generating a summary."
+    default_detail = "Enter some case sheet details before generating a summary."
 
 
 class RateLimitedError(AppError):

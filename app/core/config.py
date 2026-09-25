@@ -13,9 +13,11 @@ class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_db_name: str = "dental_app"
 
-    anthropic_api_key: str = ""
-    ai_model: str = "claude-haiku-4-5-20251001"
-    ai_timeout_seconds: float = 30.0
+    # Google Gemini API (free tier); used only by the backend
+    gemini_api_key: str = ""
+    ai_model: str = "gemini-3.5-flash-lite"
+    ai_timeout_seconds: float = 5.0
+    eval_judge_model: str = "gemini-3.6-flash"
 
     # Comma-separated list, e.g. "http://localhost:5173,https://app.vercel.app"
     cors_origins: str = Field(default="http://localhost:5173")

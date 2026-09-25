@@ -75,6 +75,42 @@ class CaseSheetRepository:
             return_document=ReturnDocument.AFTER,
         )
 
+    async def set_summary_if_unchanged(
+        self, patient_id: str, snapshot: dict[str, Any], summary: dict[str, Any]
+    ) -> bool:
+        """Save the AI summary only if the summarised data still equals `snapshot` (the values
+        read before calling the AI). One atomic update: check and write together, so a newer
+        edit always wins over an older, slower AI call. Returns False if data changed."""
+        result = await self._collection.update_one(
+            {"patient_id": patient_id, **snapshot},
+            {"$set": {"case_sheet.ai_summary": summary}},
+        )
+        return result.matched_count == 1
+
+    async def set_summary_state_if_unchanged(
+        self, patient_id: str, snapshot: dict[str, Any], state: str
+    ) -> bool:
+        """Update only the summary state (e.g. "failed"), keeping the previous summary text."""
+        result = await self._collection.update_one(
+            {"patient_id": patient_id, **snapshot},
+            {"$set": {"case_sheet.ai_summary.state": state}},
+        )
+        return result.matched_count == 1
+
+    async def mark_generating(self, patient_id: str, requested_hash: str) -> None:
+        """Summary is being (re)generated for the content with fingerprint `requested_hash`.
+        The previous text stays visible until the new one is saved."""
+        await self._collection.update_one(
+            {"patient_id": patient_id},
+            {
+                "$set": {
+                    "case_sheet.ai_summary.state": "generating",
+                    "case_sheet.ai_summary.requested_hash": requested_hash,
+                    "case_sheet.ai_summary.requested_at": utc_now(),
+                }
+            },
+        )
+
     async def count_by_status(self) -> dict[str | None, int]:
         cursor = await self._collection.aggregate(
             [{"$group": {"_id": "$case_sheet.status", "count": {"$sum": 1}}}]

@@ -1,8 +1,9 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, BackgroundTasks, Query, Request, status
 
-from app.api.deps import PatientServiceDep
+from app.api.deps import PatientServiceDep, SummaryServiceDep
+from app.api.v1.summaries import queue_summary_refresh
 from app.schemas.common import Page
 from app.schemas.patient import PatientCreate, PatientResponse, PatientUpdate
 
@@ -31,6 +32,14 @@ async def get_patient(patient_id: str, service: PatientServiceDep) -> PatientRes
 
 @router.put("/{patient_id}", summary="Update a patient (send only the fields to change)")
 async def update_patient(
-    patient_id: str, data: PatientUpdate, service: PatientServiceDep
+    patient_id: str,
+    data: PatientUpdate,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    service: PatientServiceDep,
+    summaries: SummaryServiceDep,
 ) -> PatientResponse:
-    return await service.update_patient(patient_id, data)
+    patient = await service.update_patient(patient_id, data)
+    # Name/DOB/gender feed the AI summary; phone/address don't (the fingerprint decides)
+    await queue_summary_refresh(patient_id, request, background_tasks, summaries)
+    return patient

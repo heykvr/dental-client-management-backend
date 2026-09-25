@@ -37,25 +37,37 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _consume(limit_items, scope: str, client_ip: str) -> int | None:
+    """Count one request against every limit. Returns None if allowed, otherwise the seconds
+    until a slot frees up. Every limit is tested first, so a rejected request uses up nothing."""
+    for item in limit_items:
+        if not _limiter.test(item, scope, client_ip):
+            reset_at, _remaining = _limiter.get_window_stats(item, scope, client_ip)
+            return max(1, math.ceil(reset_at - time.time()))
+    for item in limit_items:
+        _limiter.hit(item, scope, client_ip)
+    return None
+
+
 def rate_limit(limit_string: str, scope: str):
     """Dependency enforcing e.g. "3/minute;20/day" per client IP. `scope` names the bucket."""
     limit_items = parse_many(limit_string)
 
     async def check(request: Request) -> None:
-        client_ip = get_client_ip(request)
-        # Test every limit before counting, so a rejected request uses up nothing
-        for item in limit_items:
-            if not _limiter.test(item, scope, client_ip):
-                reset_at, _remaining = _limiter.get_window_stats(item, scope, client_ip)
-                retry_after = max(1, math.ceil(reset_at - time.time()))
-                raise RateLimitedError(
-                    f"Too many requests. Please try again in {retry_after} seconds.",
-                    headers={"Retry-After": str(retry_after)},
-                )
-        for item in limit_items:
-            _limiter.hit(item, scope, client_ip)
+        retry_after = _consume(limit_items, scope, get_client_ip(request))
+        if retry_after is not None:
+            raise RateLimitedError(
+                f"Too many requests. Please try again in {retry_after} seconds.",
+                headers={"Retry-After": str(retry_after)},
+            )
 
     return Depends(check)
+
+
+def try_consume_ai_quota(request: Request) -> bool:
+    """Non-raising AI limit check for automatic summary runs: True (and counted) if the client
+    still has AI quota, False otherwise. Shares the bucket with manual summary and chat."""
+    return _consume(_ai_limit_items, "ai", get_client_ip(request)) is None
 
 
 def reset_rate_limits() -> None:
@@ -66,3 +78,4 @@ def reset_rate_limits() -> None:
 settings = get_settings()
 default_rate_limit = rate_limit(settings.rate_limit_default, "default")
 ai_rate_limit = rate_limit(settings.rate_limit_ai, "ai")
+_ai_limit_items = parse_many(settings.rate_limit_ai)
