@@ -22,6 +22,17 @@ PATIENT_ONLY = {
 }
 
 
+# How the list can be sorted (the API's `sort` values) and the fields behind each
+SORT_FIELDS: dict[str, dict[str, int]] = {
+    "created_at": {"created_at": 1},
+    "name": {"first_name": 1, "last_name": 1},
+    "patient_id": {},  # patient_id is always added as the final key
+    "status": {"_status_rank": 1},
+}
+STATUS_ORDER = ["not_started", "pending", "completed"]
+CASE_INSENSITIVE = {"locale": "en", "strength": 2}
+
+
 def _to_db(fields: dict[str, Any]) -> dict[str, Any]:
     # date_of_birth is a calendar date: stored as "YYYY-MM-DD" text, never as a datetime
     return {k: v.isoformat() if isinstance(v, date) else v for k, v in fields.items()}
@@ -67,15 +78,35 @@ class PatientRepository:
         return await self._collection.find_one({"patient_id": patient_id}, PATIENT_ONLY)
 
     async def list(
-        self, search: str | None, skip: int, limit: int
+        self,
+        search: str | None,
+        skip: int,
+        limit: int,
+        sort: str = "created_at",
+        order: str = "desc",
     ) -> tuple[list[dict[str, Any]], int]:
         query = _search_filter(search)
-        cursor = (
-            self._collection.find(query, PATIENT_ONLY)
-            .sort([("created_at", DESCENDING), ("patient_id", DESCENDING)])
-            .skip(skip)
-            .limit(limit)
-        )
+        direction = ASCENDING if order == "asc" else DESCENDING
+        pipeline: list[dict[str, Any]] = [{"$match": query}]
+        if sort == "status":
+            # Logical order (needs attention first when ascending), not alphabetical
+            pipeline.append(
+                {
+                    "$addFields": {
+                        "_status_rank": {"$indexOfArray": [STATUS_ORDER, "$case_sheet.status"]}
+                    }
+                }
+            )
+        # patient_id as the last key keeps the order stable when values are equal
+        sort_keys = {**SORT_FIELDS[sort], "patient_id": direction}
+        pipeline += [
+            {"$sort": {field: direction for field in sort_keys}},
+            {"$skip": skip},
+            {"$limit": limit},
+            {"$project": {**PATIENT_ONLY, "_status_rank": 0} if sort == "status" else PATIENT_ONLY},
+        ]
+        # Case-insensitive comparison, so "aarav" and "Aarav" sort together
+        cursor = await self._collection.aggregate(pipeline, collation=CASE_INSENSITIVE)
         # The page and the total are fetched at the same time
         items, total = await asyncio.gather(
             cursor.to_list(), self._collection.count_documents(query)

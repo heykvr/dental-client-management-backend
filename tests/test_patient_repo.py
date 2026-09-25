@@ -117,3 +117,38 @@ async def test_patient_reads_include_only_case_sheet_status(repo, db):
     for doc in (created, await repo.get("PAT-0001"), items[0], updated):
         # only the status + last update come back, never clinical data or the summary
         assert set(doc["case_sheet"]) == {"status", "updated_at"}
+
+
+async def seed_for_sorting(repo, db):
+    await repo.create("PAT-0001", fields(first_name="charu", last_name="Rao"))
+    await repo.create("PAT-0002", fields(first_name="Aarav", last_name="Shah"))
+    await repo.create("PAT-0003", fields(first_name="bhavya", last_name="Iyer"))
+    statuses = {"PAT-0001": "completed", "PAT-0002": "not_started", "PAT-0003": "pending"}
+    for patient_id, status in statuses.items():
+        await db["patients"].update_one(
+            {"patient_id": patient_id}, {"$set": {"case_sheet.status": status}}
+        )
+
+
+@pytest.mark.parametrize(
+    ("sort", "order", "expected"),
+    [
+        ("name", "asc", ["PAT-0002", "PAT-0003", "PAT-0001"]),  # Aarav, bhavya, charu
+        ("name", "desc", ["PAT-0001", "PAT-0003", "PAT-0002"]),
+        ("patient_id", "asc", ["PAT-0001", "PAT-0002", "PAT-0003"]),
+        ("patient_id", "desc", ["PAT-0003", "PAT-0002", "PAT-0001"]),
+        # Not started -> Pending -> Completed (not alphabetical)
+        ("status", "asc", ["PAT-0002", "PAT-0003", "PAT-0001"]),
+        ("status", "desc", ["PAT-0001", "PAT-0003", "PAT-0002"]),
+        ("created_at", "desc", ["PAT-0003", "PAT-0002", "PAT-0001"]),
+    ],
+)
+async def test_list_sorting(repo, db, sort, order, expected):
+    await seed_for_sorting(repo, db)
+
+    items, total = await repo.list(None, skip=0, limit=10, sort=sort, order=order)
+
+    assert [p["patient_id"] for p in items] == expected
+    assert total == 3
+    assert all("_status_rank" not in p and "_id" not in p for p in items)
+    assert all(set(p["case_sheet"]) == {"status", "updated_at"} for p in items)

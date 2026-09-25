@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Query, Request, status
 
@@ -10,14 +10,19 @@ from app.schemas.patient import PatientCreate, PatientResponse, PatientUpdate
 router = APIRouter(prefix="/patients", tags=["patients"])
 
 
-@router.get("", summary="List and search patients (newest first)")
+@router.get("", summary="List and search patients (newest first by default, sortable)")
 async def list_patients(
     service: PatientServiceDep,
     search: Annotated[str | None, Query(max_length=100)] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    sort: Annotated[
+        Literal["created_at", "name", "patient_id", "status"],
+        Query(description="status sorts Not started → Pending → Completed (ascending)"),
+    ] = "created_at",
+    order: Literal["asc", "desc"] = "desc",
 ) -> Page[PatientResponse]:
-    return await service.list_patients(search, page, limit)
+    return await service.list_patients(search, page, limit, sort, order)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Add a patient")

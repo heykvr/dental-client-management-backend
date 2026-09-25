@@ -28,9 +28,16 @@ class PatientService:
         return PatientResponse.model_validate(doc)
 
     async def list_patients(
-        self, search: str | None, page: int, limit: int
+        self,
+        search: str | None,
+        page: int,
+        limit: int,
+        sort: str = "created_at",
+        order: str = "desc",
     ) -> Page[PatientResponse]:
-        docs, total = await self._patients.list(search, skip=(page - 1) * limit, limit=limit)
+        docs, total = await self._patients.list(
+            search, skip=(page - 1) * limit, limit=limit, sort=sort, order=order
+        )
         return Page[PatientResponse](
             items=[PatientResponse.model_validate(doc) for doc in docs],
             total=total,

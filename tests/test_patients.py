@@ -124,3 +124,20 @@ def test_list_shows_case_sheet_status_without_clinical_data(client):
     assert item["case_sheet_updated_at"].endswith("+05:30")
     assert "case_sheet" not in item  # only the flattened status fields
     assert "Tooth pain" not in str(item)
+
+
+def test_list_sort_by_name_via_api(client):
+    create(client, first_name="Zoya")
+    create(client, first_name="arjun")
+
+    body = client.get(URL, params={"sort": "name", "order": "asc"}).json()
+
+    assert [p["first_name"] for p in body["items"]] == ["arjun", "Zoya"]
+
+
+@pytest.mark.parametrize("params", [{"sort": "phone"}, {"order": "up"}])
+def test_list_rejects_unknown_sort(client, params):
+    response = client.get(URL, params=params)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
