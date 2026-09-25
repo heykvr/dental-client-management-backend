@@ -109,3 +109,18 @@ def test_update_unknown_patient_returns_404(client):
 
     assert response.status_code == 404
     assert response.json()["code"] == "PATIENT_NOT_FOUND"
+
+
+def test_list_shows_case_sheet_status_without_clinical_data(client):
+    create(client)
+    client.put(
+        f"{URL}/PAT-0001/case-sheet",
+        json={"chief_complaint": {"complaint": "Tooth pain", "duration": None}},
+    )
+
+    item = client.get(URL).json()["items"][0]
+
+    assert item["case_sheet_status"] == "pending"
+    assert item["case_sheet_updated_at"].endswith("+05:30")
+    assert "case_sheet" not in item  # only the flattened status fields
+    assert "Tooth pain" not in str(item)

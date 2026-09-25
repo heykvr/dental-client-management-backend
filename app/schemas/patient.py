@@ -1,6 +1,6 @@
 import re
 from datetime import date
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AfterValidator,
@@ -101,6 +101,22 @@ class PatientResponse(BaseModel):
     address: str
     created_at: LocalDatetime
     updated_at: LocalDatetime
+    # From the embedded case sheet (status only, no clinical data): lets the list show
+    # which patients still need a case sheet
+    case_sheet_status: Literal["not_started", "pending", "completed"] = "not_started"
+    case_sheet_updated_at: LocalDatetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def lift_case_sheet_status(cls, data: Any) -> Any:
+        if isinstance(data, dict) and isinstance(data.get("case_sheet"), dict):
+            sheet = data["case_sheet"]
+            data = {
+                **data,
+                "case_sheet_status": sheet.get("status") or "not_started",
+                "case_sheet_updated_at": sheet.get("updated_at"),
+            }
+        return data
 
     @computed_field
     @property

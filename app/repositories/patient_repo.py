@@ -9,9 +9,17 @@ from pymongo.asynchronous.database import AsyncDatabase
 from app.core.time import utc_now
 from app.repositories.case_sheet_repo import empty_case_sheet
 
-# Never return Mongo's internal _id; patient reads leave out the embedded case sheet
-# (it has its own endpoint), which keeps the patient list light
-PATIENT_ONLY = {"_id": 0, "case_sheet": 0}
+# Never return Mongo's internal _id. Patient reads leave out the clinical parts of the
+# embedded case sheet (it has its own endpoint) and keep only its status + last update,
+# so the list can show "Not started / Pending / Completed" without loading clinical data.
+PATIENT_ONLY = {
+    "_id": 0,
+    "case_sheet.chief_complaint": 0,
+    "case_sheet.investigation": 0,
+    "case_sheet.diagnosis": 0,
+    "case_sheet.ai_summary": 0,
+    "case_sheet.created_at": 0,
+}
 
 
 def _to_db(fields: dict[str, Any]) -> dict[str, Any]:
@@ -53,7 +61,7 @@ class PatientRepository:
         now = utc_now()
         doc = {"patient_id": patient_id, **_to_db(fields), "created_at": now, "updated_at": now}
         await self._collection.insert_one({**doc, "case_sheet": empty_case_sheet(now)})
-        return doc
+        return {**doc, "case_sheet": {"status": "not_started", "updated_at": now}}
 
     async def get(self, patient_id: str) -> dict[str, Any] | None:
         return await self._collection.find_one({"patient_id": patient_id}, PATIENT_ONLY)

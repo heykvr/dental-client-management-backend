@@ -107,12 +107,13 @@ async def test_duplicate_patient_id_is_rejected(repo):
         await repo.create("PAT-0001", fields())
 
 
-async def test_patient_reads_leave_out_the_embedded_case_sheet(repo, db):
+async def test_patient_reads_include_only_case_sheet_status(repo, db):
     created = await repo.create("PAT-0001", fields())
     raw = await db["patients"].find_one({"patient_id": "PAT-0001"})
     items, _ = await repo.list(None, skip=0, limit=10)
     updated = await repo.update("PAT-0001", {"phone": "+911111111111"})
 
-    assert raw["case_sheet"]["status"] == "not_started"  # stored...
+    assert raw["case_sheet"]["status"] == "not_started"
     for doc in (created, await repo.get("PAT-0001"), items[0], updated):
-        assert "case_sheet" not in doc  # ...but never returned with the patient
+        # only the status + last update come back, never clinical data or the summary
+        assert set(doc["case_sheet"]) == {"status", "updated_at"}
