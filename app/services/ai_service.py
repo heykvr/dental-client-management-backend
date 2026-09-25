@@ -105,27 +105,29 @@ class AIClient:
         system: str,
         contents: str | list[types.Content],
         max_output_tokens: int = 400,
+        timeout_seconds: float | None = None,
     ) -> str:
+        timeout = timeout_seconds or self._timeout_seconds
         config = types.GenerateContentConfig(
             system_instruction=system,
             temperature=0.2,  # factual, low-variance answers
             max_output_tokens=max_output_tokens,
-            # Short grounded answers don't need long reasoning; keeps us inside the 5 s timeout
+            # Short grounded answers don't need long reasoning (faster, fewer timeouts)
             thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL),
             # We never give the model tools; skip the SDK's function-calling machinery
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
         try:
-            # Our own hard cap (AI_TIMEOUT_SECONDS) around the whole call, including the retry.
+            # Our own hard cap around the whole call, including the retry.
             # Needed because Google rejects SDK deadlines under 10 s (see get_ai_client).
             response = await asyncio.wait_for(
                 self._client.aio.models.generate_content(
                     model=self.model, contents=contents, config=config
                 ),
-                timeout=self._timeout_seconds,
+                timeout=timeout,
             )
         except TimeoutError as exc:
-            logger.warning("Gemini did not answer within %ss", self._timeout_seconds)
+            logger.warning("Gemini did not answer within %ss", timeout)
             raise AIUnavailableError() from exc
         except errors.APIError as exc:  # 4xx incl. 429 quota, 5xx incl. 503 overloaded
             logger.warning("Gemini API error %s: %s", exc.code, exc.message)
@@ -150,9 +152,9 @@ def get_ai_client() -> AIClient:
     client = genai.Client(
         api_key=settings.gemini_api_key,
         http_options=types.HttpOptions(
-            # The SDK sends this to Google as a server deadline, and Google rejects anything
-            # under 10 s. The user-facing limit (AI_TIMEOUT_SECONDS) is enforced in AIClient.
-            timeout=max(GOOGLE_MIN_DEADLINE_MS, int(settings.ai_timeout_seconds * 1000)),
+            # The SDK sends this to Google as a server deadline (Google rejects < 10 s). Our own
+            # limits (chat / summary timeouts) are enforced in AIClient.generate.
+            timeout=max(GOOGLE_MIN_DEADLINE_MS, int(settings.ai_summary_timeout_seconds * 1000)),
             # The SDK default is 5 attempts; one retry on server errors keeps the worst case
             # near 10 s. 429 (free-tier quota) is not retried: it won't clear in seconds.
             retry_options=types.HttpRetryOptions(
@@ -160,4 +162,5 @@ def get_ai_client() -> AIClient:
             ),
         ),
     )
-    return AIClient(client, settings.ai_model, settings.ai_timeout_seconds)
+    # Default limit = the chat one; the summary passes its own longer limit
+    return AIClient(client, settings.ai_model, settings.ai_chat_timeout_seconds)

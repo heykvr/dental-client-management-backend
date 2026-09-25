@@ -6,7 +6,7 @@ from app.services.ai_service import AIClient, format_patient_record, load_prompt
 from app.services.case_sheet_service import load_patient_with_case_sheet
 from app.services.patient_service import normalize_patient_id
 
-CHAT_MAX_OUTPUT_TOKENS = 300
+CHAT_MAX_OUTPUT_TOKENS = 500  # room for facts + a few suggestion bullets
 
 # Gemini calls the assistant role "model"
 GEMINI_ROLES = {"user": "user", "assistant": "model"}

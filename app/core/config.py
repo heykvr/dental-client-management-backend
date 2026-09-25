@@ -16,7 +16,9 @@ class Settings(BaseSettings):
     # Google Gemini API (free tier); used only by the backend
     gemini_api_key: str = ""
     ai_model: str = "gemini-3.5-flash-lite"
-    ai_timeout_seconds: float = 5.0
+    # Max wait for an AI answer: chat is interactive, the summary runs in the background
+    ai_chat_timeout_seconds: float = 15.0
+    ai_summary_timeout_seconds: float = 20.0
     eval_judge_model: str = "gemini-3.6-flash"
 
     # Comma-separated list, e.g. "http://localhost:5173,https://app.vercel.app"

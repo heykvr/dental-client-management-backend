@@ -52,7 +52,10 @@ def test_prompt_has_rules_and_the_patients_record(client, patient, fake_ai):
     ask(client)
 
     system = fake_ai.calls[0]["system"]
-    assert "Answer only from the patient record" in system
+    # Facts only from the record; guidance allowed but clearly labelled
+    assert "Take them only from the patient record" in system
+    assert "Suggestions (general guidance, confirm clinically):" in system
+    assert "Do not give drug names with doses" in system
     assert "<patient_record>" in system
     assert "- Diagnosis: Deep dental caries" in system
     assert "- Complaint: Not recorded" in system

@@ -36,7 +36,7 @@ class FakeAI:
         self.error: Exception | None = None
         self.calls: list[dict] = []
 
-    async def generate(self, *, system, contents, max_output_tokens=400):
+    async def generate(self, *, system, contents, max_output_tokens=400, timeout_seconds=None):
         self.calls.append({"system": system, "contents": contents})
         if self.error:
             raise self.error

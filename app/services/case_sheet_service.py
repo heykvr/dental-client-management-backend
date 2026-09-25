@@ -22,9 +22,16 @@ SUMMARY_PATIENT_FIELDS = ("first_name", "last_name", "date_of_birth", "gender")
 GENERATION_TIMEOUT = timedelta(minutes=2)
 
 
+# Bump when prompts/summary.txt changes meaningfully: older summaries then show as outdated
+# (with a Regenerate button) instead of "up to date". v2: added "Suggested next step".
+SUMMARY_PROMPT_VERSION = 2
+
+
 def summary_source_hash(patient: dict[str, Any], content: CaseSheetContent) -> str:
-    """Fingerprint of everything the summary is based on. Changes whenever that data changes."""
+    """Fingerprint of everything the summary is based on (the data + the prompt version).
+    Changes whenever that data or the summary prompt changes."""
     source = {
+        "prompt_version": SUMMARY_PROMPT_VERSION,
         "patient": {field: patient.get(field) for field in SUMMARY_PATIENT_FIELDS},
         "case_sheet": content.model_dump(mode="json"),
     }

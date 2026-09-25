@@ -111,15 +111,28 @@ def test_stuck_generation_is_reported_as_failed(client, patient):
 # --------------------------------------------------------------- manual Regenerate / Retry
 
 
-def test_manual_regenerate_returns_updated_case_sheet(client, patient, fake_ai):
-    client.put(SHEET_URL, json=COMPLAINT, headers=IP)
-    fake_ai.text = "Regenerated summary."
+def test_manual_regenerate_on_unchanged_record_returns_saved_summary(client, patient, fake_ai):
+    client.put(SHEET_URL, json=COMPLAINT, headers=IP)  # auto summary: 1 AI call
+    fake_ai.text = "Would be a new summary"
 
     response = client.post(SUMMARY_URL, headers=IP)
 
     assert response.status_code == 200
-    assert response.json()["ai_summary"]["text"] == "Regenerated summary."
+    assert response.json()["ai_summary"]["text"] == "Fake summary of the patient's record."
     assert response.json()["patient_id"] == "PAT-0001"
+    assert len(fake_ai.calls) == 1  # nothing changed, so no second AI call
+
+
+def test_manual_regenerate_after_failure_calls_ai(client, patient, fake_ai):
+    fake_ai.error = AIUnavailableError()
+    client.put(SHEET_URL, json=COMPLAINT, headers=IP)  # auto summary fails
+    fake_ai.error = None
+    fake_ai.text = "Recovered summary"
+
+    response = client.post(SUMMARY_URL, headers=IP)
+
+    assert response.json()["ai_summary"]["text"] == "Recovered summary"
+    assert response.json()["ai_summary"]["state"] == "ready"
 
 
 def test_manual_on_not_started_sheet_is_409(client, patient, fake_ai):

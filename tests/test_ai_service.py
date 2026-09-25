@@ -192,5 +192,20 @@ def test_sdk_deadline_respects_googles_ten_second_minimum():
     client = get_ai_client()
 
     assert client._client._api_client._http_options.timeout >= 10_000
-    assert client._timeout_seconds == 5
+    assert client._timeout_seconds == 15  # chat limit by default
     get_ai_client.cache_clear()
+
+
+async def test_per_call_timeout_overrides_the_default():
+    import asyncio
+
+    async def slow_generate_content(**kwargs):
+        await asyncio.sleep(0.1)
+        return response("in time")
+
+    client = SimpleNamespace(
+        aio=SimpleNamespace(models=SimpleNamespace(generate_content=slow_generate_content))
+    )
+    ai = AIClient(client, "gemini-test", timeout_seconds=0.01)  # default too short
+
+    assert await ai.generate(system="rules", contents="record", timeout_seconds=1) == "in time"

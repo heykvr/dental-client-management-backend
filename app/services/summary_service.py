@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from app.core.config import get_settings
 from app.core.exceptions import AIUnavailableError, AppError, CaseSheetRequiredError
 from app.core.time import utc_now
 from app.repositories.case_sheet_repo import CaseSheetRepository
@@ -17,7 +18,7 @@ from app.services.patient_service import normalize_patient_id
 
 logger = logging.getLogger(__name__)
 
-SUMMARY_MAX_OUTPUT_TOKENS = 300
+SUMMARY_MAX_OUTPUT_TOKENS = 350  # summary + "Suggested next step" line
 
 
 class SummaryService:
@@ -28,6 +29,7 @@ class SummaryService:
     async def generate(self, patient_id: str) -> CaseSheetResponse:
         """Write a new AI summary of the patient's record and save it, unless the record
         changed while the AI was working (then the newer edit wins and this result is dropped).
+        If the saved summary already matches the record, it is returned without calling the AI.
         """
         patient_id = normalize_patient_id(patient_id)
         doc = await load_patient_with_case_sheet(self._case_sheets, patient_id)
@@ -36,12 +38,17 @@ class SummaryService:
 
         snapshot = summary_snapshot(doc)
         source_hash = summary_source_hash(doc, CaseSheetContent.model_validate(doc["case_sheet"]))
+        current = doc["case_sheet"].get("ai_summary") or {}
+        if current.get("state") == "ready" and current.get("source_hash") == source_hash:
+            # Up to date: nothing changed since this summary was written, so no AI call
+            return to_case_sheet_response(doc)
 
         try:
             text = await self._ai.generate(
                 system=load_prompt("summary"),
                 contents=format_patient_record(doc),
                 max_output_tokens=SUMMARY_MAX_OUTPUT_TOKENS,
+                timeout_seconds=get_settings().ai_summary_timeout_seconds,
             )
         except AIUnavailableError:
             # Keep the previous summary text; the UI shows "Couldn't update summary, Retry"

@@ -8,4 +8,4 @@ Rules:
 - Write 2 to 4 sentences of plain prose in a neutral clinical tone. No headings, lists or markdown.
 - Cover what is recorded: the chief complaint and its duration, the tooth or area, the investigation findings, and the diagnosis. Mention notes only if they add something clinically relevant.
 - Only if a whole section is "Not recorded", say in one short phrase that it is not recorded yet (for example, "Diagnosis not recorded yet."). Never guess it. If everything is recorded, don't mention missing information.
-- Do not give advice or recommendations beyond what the record's notes already say.
+- Then add one final line starting with "Suggested next step:" with one short, practical next step for the dentist, based on the recorded diagnosis and notes (general guidance; no drug names or doses). If there is no diagnosis yet, suggest completing the missing parts of the examination instead.

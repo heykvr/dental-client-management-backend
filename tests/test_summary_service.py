@@ -27,7 +27,7 @@ class FakeAI:
         self.text, self.error, self.calls = text, error, []
         self.during_call = None  # optional coroutine factory run mid-generation
 
-    async def generate(self, *, system, contents, max_output_tokens):
+    async def generate(self, *, system, contents, max_output_tokens, timeout_seconds=None):
         self.calls.append({"system": system, "contents": contents})
         if self.during_call:
             await self.during_call()
@@ -68,6 +68,7 @@ async def test_prompt_contains_the_record_and_summary_rules(repo):
     assert "Pain in lower right back tooth" in ai.calls[0]["contents"]
     assert "- Diagnosis: Not recorded" in ai.calls[0]["contents"]
     assert "Never add findings" in ai.calls[0]["system"]
+    assert "Suggested next step:" in ai.calls[0]["system"]
 
 
 async def test_summary_becomes_stale_after_an_edit(repo):
@@ -141,3 +142,41 @@ async def test_not_started_sheet_is_rejected_without_calling_ai(repo):
 async def test_unknown_patient_is_404(repo):
     with pytest.raises(PatientNotFoundError):
         await SummaryService(repo, FakeAI()).generate("PAT-9999")
+
+
+async def test_up_to_date_summary_is_returned_without_calling_ai(repo):
+    await fill_complaint(repo)
+    await SummaryService(repo, FakeAI(text="Saved summary")).generate("PAT-0001")
+    ai = FakeAI(text="SHOULD NOT BE USED")
+
+    sheet = await SummaryService(repo, ai).generate("PAT-0001")
+
+    assert ai.calls == []
+    assert sheet.ai_summary.text == "Saved summary"
+
+
+async def test_summary_uses_the_longer_summary_timeout(repo):
+    await fill_complaint(repo)
+    seen = {}
+
+    class RecordingAI(FakeAI):
+        async def generate(self, *, system, contents, max_output_tokens, timeout_seconds=None):
+            seen["timeout"] = timeout_seconds
+            return "Summary"
+
+    await SummaryService(repo, RecordingAI()).generate("PAT-0001")
+
+    assert seen["timeout"] == 20
+
+
+async def test_prompt_version_change_makes_old_summaries_outdated(repo, monkeypatch):
+    from app.services import case_sheet_service
+    from app.services.case_sheet_service import to_case_sheet_response
+
+    await fill_complaint(repo)
+    await SummaryService(repo, FakeAI()).generate("PAT-0001")
+
+    monkeypatch.setattr(case_sheet_service, "SUMMARY_PROMPT_VERSION", 999)
+    doc = await repo.get_patient_with_case_sheet("PAT-0001")
+
+    assert to_case_sheet_response(doc).ai_summary.is_stale is True
