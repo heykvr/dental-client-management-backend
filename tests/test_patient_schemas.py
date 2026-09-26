@@ -52,6 +52,27 @@ def test_create_rejects_invalid_field(field, value):
     assert exc.value.errors()[0]["loc"] == (field,)
 
 
+@pytest.mark.parametrize("name", ["Sai Kiran", "K.", "D'Souza", "Rao-Iyer"])
+def test_names_allow_letters_space_dot_apostrophe_hyphen(name):
+    patient = PatientCreate(**{**VALID, "first_name": name, "last_name": name})
+
+    assert (patient.first_name, patient.last_name) == (name, name)
+
+
+@pytest.mark.parametrize("field", ["first_name", "last_name"])
+@pytest.mark.parametrize("name", ["Aarav1", "R@m", "-Ravi", ".K", "Anu_Rao"])
+def test_names_reject_digits_symbols_or_non_letter_start(field, name):
+    with pytest.raises(ValidationError) as exc:
+        PatientCreate(**{**VALID, field: name})
+
+    assert exc.value.errors()[0]["loc"] == (field,)
+
+
+def test_update_rejects_invalid_name():
+    with pytest.raises(ValidationError):
+        PatientUpdate(last_name="R4mesh")
+
+
 def test_create_rejects_unknown_fields():
     with pytest.raises(ValidationError):
         PatientCreate(**VALID, patient_id="PAT-9999")

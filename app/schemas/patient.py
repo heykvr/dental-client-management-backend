@@ -16,6 +16,9 @@ from app.schemas.common import optional_text
 
 MAX_AGE_YEARS = 120
 PHONE_PATTERN = re.compile(r"^\+?\d{10,15}$")
+# Letters, plus the few symbols real names use: space, dot (initials), apostrophe, hyphen
+NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z .'-]*$")
+NAME_ERROR = "Use letters only (spaces, . ' - allowed), starting with a letter"
 
 Gender = Literal["male", "female", "other"]
 
@@ -34,6 +37,12 @@ def _validate_date_of_birth(value: date) -> date:
     return value
 
 
+def _validate_name(value: str | None) -> str | None:
+    if value is not None and not NAME_PATTERN.fullmatch(value):
+        raise ValueError(NAME_ERROR)
+    return value
+
+
 def _normalize_phone(value: str) -> str:
     # Accept common formats like "+91 98765-43210" or "(987) 654 3210"; store digits only
     cleaned = re.sub(r"[\s\-()]", "", value)
@@ -42,8 +51,12 @@ def _normalize_phone(value: str) -> str:
     return cleaned
 
 
-FirstName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
-LastName = optional_text(50)
+FirstName = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=50),
+    AfterValidator(_validate_name),
+]
+LastName = Annotated[optional_text(50), AfterValidator(_validate_name)]
 DateOfBirth = Annotated[date, AfterValidator(_validate_date_of_birth)]
 Phone = Annotated[str, StringConstraints(strip_whitespace=True), AfterValidator(_normalize_phone)]
 Address = Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=300)]
