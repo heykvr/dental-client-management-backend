@@ -118,3 +118,10 @@ For the UI, follow the [frontend README](https://github.com/heykvr/dental-client
 - Render's free tier sleeps, so the first request takes 30–60 s.
 - Atlas allows all IPs (`0.0.0.0/0`) because Render's free tier has no static IP. Access is protected by credentials and TLS.
 - Gemini's free tier has tight limits and may use prompts for training, so use demo data only.
+
+## 9. Next steps
+
+- **CI:** GitHub Actions runs Ruff and pytest (with a MongoDB service container) on every pull request, and a failing check blocks the merge.
+- **CD:** Render deploys only after CI passes on `main`. After each deploy, a smoke test calls `/health` and a few key routes.
+- **Environments:** separate staging and production, each with its own Atlas database, Gemini key and env vars. Changes go to staging first.
+- **Security:** JWT login with roles, Redis-backed rate limits, and a static outbound IP allow-listed in Atlas.
