@@ -40,7 +40,7 @@ cp .env.example .env      # replace the <placeholders> (see section 5)
 Tests (use a local MongoDB and a fake AI, so no key needed):
 
 ```bash
-uv sync
+uv sync                   # creates .venv and installs dependencies
 docker compose up -d mongo
 uv run pytest
 ```
@@ -95,7 +95,7 @@ The API runs at http://localhost:8001 (docs at `/docs`).
 **Option B: without Docker** (set `MONGODB_URI` to your Atlas URI)
 
 ```bash
-uv sync
+uv sync                   # creates .venv and installs dependencies
 uv run uvicorn app.main:app --reload
 ```
 
